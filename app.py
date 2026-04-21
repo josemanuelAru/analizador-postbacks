@@ -2,65 +2,87 @@ import streamlit as st
 import pandas as pd
 import re
 from collections import Counter
+from urllib.parse import urlparse, parse_qs
 
-# Configuración básica de la página
-st.set_page_config(page_title="Analizador de Tokens Postback", layout="centered")
+# Configuración de la página
+st.set_page_config(page_title="Analizador de URLs y Tokens", layout="wide")
 
-st.title("🔗 Analizador de Tokens en Postback URLs")
-st.markdown("Sube tu CSV para contar cuántas veces se utiliza cada macro/token en tus enlaces de afiliado.")
+st.title("📊 Analizador Avanzado de URLs de Afiliación")
+st.markdown("Sube tu CSV para desglosar **Tokens** y **Parámetros de URL**.")
 
-# 1. Widget para subir el archivo
 uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
 if uploaded_file is not None:
     try:
-        # Leer el CSV
         df = pd.read_csv(uploaded_file)
         
-        # 2. Buscar la columna "Postback Url" (ignorando mayúsculas/minúsculas o espacios extra)
-        col_name = None
-        for col in df.columns:
-            if col.strip().lower() == "postback url":
-                col_name = col
-                break
+        # --- SECCIÓN 1: TOKENS EN POSTBACK URL ---
+        st.divider()
+        st.header("1. Contador de Tokens (Postback URL)")
         
-        if not col_name:
-            st.error("❌ No se encontró la columna 'Postback Url' en el CSV. Por favor revisa los encabezados de tu archivo.")
-        else:
-            st.success(f"✅ CSV cargado. Procesando la columna: '{col_name}'")
-            
-            # 3. Lógica para extraer los tokens
-            # Esta expresión regular busca cualquier texto entre {}, [] o <>
+        col_postback = next((c for c in df.columns if c.strip().lower() == "postback url"), None)
+        
+        if col_postback:
             token_pattern = re.compile(r'(\{.*?\}|\[.*?\]|<.*?>)')
-            
             all_tokens = []
-            
-            # Limpiamos valores nulos (celdas vacías) y convertimos todo a texto
-            urls = df[col_name].dropna().astype(str)
-            
-            # Extraemos los tokens de cada URL y los metemos en una lista gigante
-            for url in urls:
-                tokens = token_pattern.findall(url)
-                all_tokens.extend(tokens)
+            urls_pb = df[col_postback].dropna().astype(str)
+            for url in urls_pb:
+                all_tokens.extend(token_pattern.findall(url))
             
             if all_tokens:
-                # 4. Contar los tokens
                 token_counts = Counter(all_tokens)
+                df_tokens = pd.DataFrame(token_counts.items(), columns=["Token", "Frecuencia"]).sort_values(by="Frecuencia", ascending=False)
                 
-                # Convertir a DataFrame para que se vea bonito en Streamlit
-                df_results = pd.DataFrame(token_counts.items(), columns=["Token", "Frecuencia"])
-                df_results = df_results.sort_values(by="Frecuencia", ascending=False).reset_index(drop=True)
-                
-                # 5. Mostrar Resultados
-                st.write("### 📊 Desglose de Tokens Utilizados")
-                st.dataframe(df_results, use_container_width=True)
-                
-                st.write("### 📈 Gráfico de Frecuencias")
-                # Preparamos los datos para el gráfico de barras nativo de Streamlit
-                st.bar_chart(df_results.set_index("Token"))
-                
+                c1, c2 = st.columns([1, 2])
+                c1.dataframe(df_tokens, use_container_width=True)
+                c2.bar_chart(df_tokens.set_index("Token"))
             else:
-                st.warning("⚠️ No se encontraron tokens (ej. {clickid}, [sub1]) en las URLs proporcionadas.")
+                st.info("No se encontraron tokens en la columna Postback URL.")
+        else:
+            st.warning("Columna 'Postback Url' no encontrada.")
+
+        # --- SECCIÓN 2: DESGLOSE DE PARÁMETROS (ORIGINAL URL) ---
+        st.divider()
+        st.header("2. Desglose de Parámetros (Original URL)")
+        
+        col_original = next((c for c in df.columns if c.strip().lower() == "original url"), None)
+        
+        if col_original:
+            all_params_data = [] # Para la tabla de Nombre | Valor
+            param_names_counter = [] # Para el contador de nombres
+            
+            urls_orig = df[col_original].dropna().astype(str)
+            
+            for url in urls_orig:
+                # Extraemos los parámetros de la URL
+                parsed_url = urlparse(url)
+                params = parse_qs(parsed_url.query)
+                
+                for key, values in params.items():
+                    for val in values:
+                        all_params_data.append({"Nombre del Parámetro": key, "Valor": val})
+                        param_names_counter.append(key)
+            
+            if all_params_data:
+                # Tabla 1: Todos los parámetros y sus valores
+                st.subheader("📋 Lista de Parámetros y Valores detectados")
+                df_params_all = pd.DataFrame(all_params_data)
+                st.dataframe(df_params_all, use_container_width=True)
+                
+                # Tabla 2 y Contador: Frecuencia de cada parámetro
+                st.subheader("🔢 Contador de uso por Nombre de Parámetro")
+                name_counts = Counter(param_names_counter)
+                df_name_counts = pd.DataFrame(name_counts.items(), columns=["Nombre del Parámetro", "Veces Utilizado"]).sort_values(by="Veces Utilizado", ascending=False)
+                
+                col_t1, col_t2 = st.columns([1, 1])
+                col_t1.write("Frecuencia:")
+                col_t1.dataframe(df_name_counts, use_container_width=True)
+                col_t2.write("Visualización:")
+                col_t2.bar_chart(df_name_counts.set_index("Nombre del Parámetro"))
+            else:
+                st.info("No se detectaron parámetros (ej. ?sub1=val&sub2=val) en la Original URL.")
+        else:
+            st.warning("Columna 'Original URL' no encontrada.")
                 
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar el archivo: {e}")
+        st.error(f"Error procesando el archivo: {e}")
