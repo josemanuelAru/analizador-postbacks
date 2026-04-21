@@ -54,7 +54,6 @@ if uploaded_file is not None:
             urls_orig = df[col_original].dropna().astype(str)
             
             for url in urls_orig:
-                # Extraemos los parámetros de la URL
                 parsed_url = urlparse(url)
                 params = parse_qs(parsed_url.query)
                 
@@ -64,21 +63,48 @@ if uploaded_file is not None:
                         param_names_counter.append(key)
             
             if all_params_data:
-                # Tabla 1: Todos los parámetros y sus valores
-                st.subheader("📋 Lista de Parámetros y Valores detectados")
-                df_params_all = pd.DataFrame(all_params_data)
-                st.dataframe(df_params_all, use_container_width=True)
-                
-                # Tabla 2 y Contador: Frecuencia de cada parámetro
+                # Mostrar el contador global de parámetros
                 st.subheader("🔢 Contador de uso por Nombre de Parámetro")
                 name_counts = Counter(param_names_counter)
                 df_name_counts = pd.DataFrame(name_counts.items(), columns=["Nombre del Parámetro", "Veces Utilizado"]).sort_values(by="Veces Utilizado", ascending=False)
                 
                 col_t1, col_t2 = st.columns([1, 1])
-                col_t1.write("Frecuencia:")
                 col_t1.dataframe(df_name_counts, use_container_width=True)
-                col_t2.write("Visualización:")
                 col_t2.bar_chart(df_name_counts.set_index("Nombre del Parámetro"))
+                
+                # --- SECCIÓN 3: VALORES ÚNICOS DE PARÁMETROS ESPECÍFICOS ---
+                st.divider()
+                st.header("3. Valores Únicos para Parámetros Específicos AppsFlyer")
+                st.markdown("Valores diferentes detectados para `af_xplatform_vt_lookback` y `af_pmod_priority`.")
+                
+                df_all_params = pd.DataFrame(all_params_data)
+                
+                # Filtrar valores únicos
+                lookback_vals = df_all_params[df_all_params["Nombre del Parámetro"] == "af_xplatform_vt_lookback"]["Valor"].unique()
+                priority_vals = df_all_params[df_all_params["Nombre del Parámetro"] == "af_pmod_priority"]["Valor"].unique()
+                
+                col_af1, col_af2 = st.columns(2)
+                
+                with col_af1:
+                    st.subheader("af_xplatform_vt_lookback")
+                    if len(lookback_vals) > 0:
+                        df_lookback = pd.DataFrame(lookback_vals, columns=["Valores Únicos Encontrados"])
+                        st.dataframe(df_lookback, use_container_width=True)
+                    else:
+                        st.info("No se encontró el parámetro 'af_xplatform_vt_lookback' en las URLs.")
+                        
+                with col_af2:
+                    st.subheader("af_pmod_priority")
+                    if len(priority_vals) > 0:
+                        df_priority = pd.DataFrame(priority_vals, columns=["Valores Únicos Encontrados"])
+                        st.dataframe(df_priority, use_container_width=True)
+                    else:
+                        st.info("No se encontró el parámetro 'af_pmod_priority' en las URLs.")
+
+                # Tabla opcional con todos los parámetros crudos (colapsada para no saturar la pantalla)
+                with st.expander("Ver lista completa y detallada de todos los parámetros y valores extraídos"):
+                    st.dataframe(df_all_params, use_container_width=True)
+                    
             else:
                 st.info("No se detectaron parámetros (ej. ?sub1=val&sub2=val) en la Original URL.")
         else:
