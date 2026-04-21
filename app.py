@@ -110,7 +110,6 @@ with tab2:
     st.header("Extractor y Agrupador de IPs")
     st.markdown("Sube **múltiples archivos CSV** al mismo tiempo. El sistema los unirá y agrupará las IPs únicas por País y Sistema Operativo.")
     
-    # Permitir subir múltiples archivos
     uploaded_csvs = st.file_uploader("Arrastra aquí todos tus CSVs", type=["csv"], accept_multiple_files=True, key="multi_csv_uploader")
     
     if uploaded_csvs:
@@ -124,19 +123,17 @@ with tab2:
             df_master = pd.concat(dataframes, ignore_index=True)
             st.success(f"✅ Se han fusionado {len(uploaded_csvs)} archivos con un total de {len(df_master)} filas.")
             
-            # 2. Función para encontrar el nombre exacto de la columna (ignorando mayúsculas)
+            # 2. Función para encontrar el nombre exacto de la columna
             def find_col(df, possible_names):
                 for col in df.columns:
                     if col.strip().lower() in possible_names:
                         return col
                 return None
 
-            # Buscar las columnas clave (añade aquí más variaciones si tu CSV las llama distinto)
             col_ip = find_col(df_master, ['ip', 'ip address', 'ip_address'])
             col_os = find_col(df_master, ['os', 'platform', 'operating system'])
             col_country = find_col(df_master, ['country', 'country code', 'country_code', 'país', 'pais'])
 
-            # 3. Validar que encontramos las 3 columnas
             missing_cols = []
             if not col_ip: missing_cols.append("IP")
             if not col_os: missing_cols.append("OS")
@@ -146,34 +143,51 @@ with tab2:
                 st.error(f"❌ Faltan columnas en los CSVs para hacer la agrupación: {', '.join(missing_cols)}.")
                 st.info("Los encabezados detectados en tus archivos son: " + ", ".join(df_master.columns))
             else:
-                # 4. Limpiar datos vacíos y agrupar
+                # Limpiar datos vacíos
                 df_clean = df_master.dropna(subset=[col_ip, col_os, col_country]).copy()
                 
-                # Agrupar por País y OS, extrayendo las IPs únicas
+                # --- TABLA 1: IPs Agrupadas Únicas ---
                 grouped = df_clean.groupby([col_country, col_os])[col_ip].unique().reset_index()
-                
-                # Crear columnas legibles
                 grouped['Total IPs Únicas'] = grouped[col_ip].apply(len)
-                # Unir las IPs con una coma para que sea un solo bloque de texto copiable
                 grouped['Lista de IPs'] = grouped[col_ip].apply(lambda ips: ", ".join(map(str, ips)))
                 
-                # Ordenar columnas para mostrar
-                df_final = grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']]
-                df_final = df_final.sort_values(by=[col_country, col_os]).reset_index(drop=True)
+                df_final = grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']].sort_values(by=[col_country, col_os]).reset_index(drop=True)
                 
-                # 5. Mostrar la tabla
-                st.subheader("📊 Resultados Agrupados")
-                st.caption("Puedes hacer clic en cualquier celda de la columna 'Lista de IPs' y pulsar Ctrl+C / Cmd+C para copiar todo su contenido.")
+                st.subheader("📊 Resultados Agrupados (IPs Únicas)")
+                st.caption("Haz clic en una celda de 'Lista de IPs' y pulsa Ctrl+C / Cmd+C para copiar todo su contenido.")
                 st.dataframe(df_final, use_container_width=True)
                 
-                # 6. Botón de Descarga (Crucial por si hay miles de IPs y copiar a mano falla)
                 csv_to_download = df_final.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    label="⬇️ Descargar Tabla de IPs en CSV",
+                    label="⬇️ Descargar Tabla de IPs Únicas en CSV",
                     data=csv_to_download,
-                    file_name="ips_agrupadas.csv",
+                    file_name="ips_agrupadas_unicas.csv",
                     mime="text/csv",
                 )
+                
+                # --- TABLA 2: Contador de IPs más repetidas (>= 5) ---
+                st.divider()
+                st.subheader("🚨 IPs más repetidas (Posible Fraude o Proxies)")
+                st.markdown("Esta tabla muestra las IPs que aparecen **5 veces o más** en el total de los archivos.")
+                
+                # Contar ocurrencias agrupando por País, OS e IP
+                ip_counts = df_clean.groupby([col_country, col_os, col_ip]).size().reset_index(name='Repeticiones')
+                
+                # Filtrar las que tienen >= 5 repeticiones y ordenar de mayor a menor
+                suspicious_ips = ip_counts[ip_counts['Repeticiones'] >= 5].sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
+                
+                if not suspicious_ips.empty:
+                    st.dataframe(suspicious_ips, use_container_width=True)
+                    
+                    csv_suspicious = suspicious_ips.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="⬇️ Descargar IPs Repetidas",
+                        data=csv_suspicious,
+                        file_name="ips_repetidas_alerta.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.success("✅ Datos limpios: No se detectó ninguna IP que se repita 5 veces o más.")
                 
         except Exception as e:
             st.error(f"Ocurrió un error al procesar los archivos: {e}")
