@@ -5,106 +5,175 @@ from collections import Counter
 from urllib.parse import urlparse, parse_qs
 
 # Configuración de la página
-st.set_page_config(page_title="Analizador de URLs y Tokens", layout="wide")
+st.set_page_config(page_title="Herramientas de Afiliación", layout="wide")
 
-st.title("📊 Analizador de URLs (Versión Simplificada)")
-st.markdown("Sube tu CSV para ver los **Tokens** y **Parámetros Únicos** (sin repeticiones).")
+st.title("🛠️ Suite de Herramientas para Afiliados")
 
-uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+# Crear las dos pestañas principales
+tab1, tab2 = st.tabs(["🔗 Analizador de URLs (1 CSV)", "🌍 Extractor Masivo de IPs (Múltiples CSVs)"])
 
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        
-        # --- SECCIÓN 1: TOKENS EN POSTBACK URL ---
-        st.divider()
-        st.header("1. Tokens Únicos (Postback URL)")
-        
-        col_postback = next((c for c in df.columns if c.strip().lower() == "postback url"), None)
-        
-        if col_postback:
-            token_pattern = re.compile(r'(\{.*?\}|\[.*?\]|<.*?>)')
-            all_tokens = []
-            urls_pb = df[col_postback].dropna().astype(str)
-            for url in urls_pb:
-                all_tokens.extend(token_pattern.findall(url))
+# ==========================================
+# PESTAÑA 1: ANALIZADOR DE URLS Y TOKENS
+# ==========================================
+with tab1:
+    st.header("Analizador de URLs (Versión Simplificada)")
+    uploaded_file = st.file_uploader("Sube un (1) archivo CSV para analizar URLs", type=["csv"], key="url_uploader")
+
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
             
-            if all_tokens:
-                # Contamos para el gráfico, pero mostramos tabla limpia
-                token_counts = Counter(all_tokens)
-                df_tokens = pd.DataFrame(token_counts.items(), columns=["Token", "Frecuencia"]).sort_values(by="Frecuencia", ascending=False)
+            # --- SECCIÓN 1: TOKENS EN POSTBACK URL ---
+            st.subheader("1. Tokens Únicos (Postback URL)")
+            col_postback = next((c for c in df.columns if c.strip().lower() == "postback url"), None)
+            
+            if col_postback:
+                token_pattern = re.compile(r'(\{.*?\}|\[.*?\]|<.*?>)')
+                all_tokens = []
+                urls_pb = df[col_postback].dropna().astype(str)
+                for url in urls_pb:
+                    all_tokens.extend(token_pattern.findall(url))
                 
-                c1, c2 = st.columns([1, 2])
-                with c1:
-                    st.write("Lista de Tokens detectados:")
-                    # Mostramos solo el nombre del token una vez
-                    st.dataframe(df_tokens[["Token"]].reset_index(drop=True), use_container_width=True)
-                with c2:
-                    st.write("Frecuencia de uso:")
-                    st.bar_chart(df_tokens.set_index("Token"))
+                if all_tokens:
+                    token_counts = Counter(all_tokens)
+                    df_tokens = pd.DataFrame(token_counts.items(), columns=["Token", "Frecuencia"]).sort_values(by="Frecuencia", ascending=False)
+                    
+                    c1, c2 = st.columns([1, 2])
+                    with c1:
+                        st.dataframe(df_tokens[["Token"]].reset_index(drop=True), use_container_width=True)
+                    with c2:
+                        st.bar_chart(df_tokens.set_index("Token"))
+                else:
+                    st.info("No se encontraron tokens.")
             else:
-                st.info("No se encontraron tokens.")
-        else:
-            st.warning("Columna 'Postback Url' no encontrada.")
+                st.warning("Columna 'Postback Url' no encontrada.")
 
-        # --- SECCIÓN 2: PARÁMETROS ÚNICOS (ORIGINAL URL) ---
-        st.divider()
-        st.header("2. Parámetros Únicos Detectados (Original URL)")
-        
-        col_original = next((c for c in df.columns if c.strip().lower() == "original url"), None)
-        
-        if col_original:
-            all_params_pairs = [] # Para (Nombre, Valor)
-            param_names = set()   # Usamos un set para nombres únicos automáticamente
+            # --- SECCIÓN 2: PARÁMETROS ÚNICOS (ORIGINAL URL) ---
+            st.divider()
+            st.subheader("2. Parámetros Únicos Detectados (Original URL)")
+            col_original = next((c for c in df.columns if c.strip().lower() == "original url"), None)
             
-            urls_orig = df[col_original].dropna().astype(str)
-            
-            for url in urls_orig:
-                parsed_url = urlparse(url)
-                params = parse_qs(parsed_url.query)
+            if col_original:
+                all_params_pairs = []
+                param_names = set()
+                urls_orig = df[col_original].dropna().astype(str)
                 
-                for key, values in params.items():
-                    param_names.add(key) # Guardar nombre único
-                    for val in values:
-                        all_params_pairs.append({"Parámetro": key, "Valor": val})
-            
-            if param_names:
-                # A. Tabla de nombres de parámetros que NO se repiten
-                st.subheader("📋 Nombres de parámetros encontrados (Sin duplicados)")
-                df_unique_names = pd.DataFrame(sorted(list(param_names)), columns=["Nombre del Parámetro"])
-                st.dataframe(df_unique_names, use_container_width=True)
+                for url in urls_orig:
+                    parsed_url = urlparse(url)
+                    params = parse_qs(parsed_url.query)
+                    for key, values in params.items():
+                        param_names.add(key)
+                        for val in values:
+                            all_params_pairs.append({"Parámetro": key, "Valor": val})
                 
-                # B. Tabla de combinaciones Nombre-Valor Únicas
-                st.subheader("🔗 Combinaciones de Valor únicas")
-                st.caption("Si un parámetro tiene el mismo valor en varias filas, aquí solo se muestra una vez.")
-                df_unique_pairs = pd.DataFrame(all_params_pairs).drop_duplicates().sort_values(by="Parámetro")
-                st.dataframe(df_unique_pairs.reset_index(drop=True), use_container_width=True)
+                if param_names:
+                    df_unique_names = pd.DataFrame(sorted(list(param_names)), columns=["Nombre del Parámetro"])
+                    df_unique_pairs = pd.DataFrame(all_params_pairs).drop_duplicates().sort_values(by="Parámetro")
+                    
+                    st.write("**Nombres de parámetros encontrados (Sin duplicados):**")
+                    st.dataframe(df_unique_names, use_container_width=True)
+                    
+                    st.write("**Combinaciones de Valor únicas:**")
+                    st.dataframe(df_unique_pairs.reset_index(drop=True), use_container_width=True)
 
-                # --- SECCIÓN 3: VALORES ÚNICOS APPSFLYER ---
-                st.divider()
-                st.header("3. Filtro Específico AppsFlyer")
-                
-                col_af1, col_af2 = st.columns(2)
-                
-                with col_af1:
-                    st.subheader("af_xplatform_vt_lookback")
-                    lookback_vals = df_unique_pairs[df_unique_pairs["Parámetro"] == "af_xplatform_vt_lookback"]["Valor"].unique()
-                    if len(lookback_vals) > 0:
-                        st.table(pd.DataFrame(lookback_vals, columns=["Valores Únicos"]))
-                    else:
-                        st.info("No detectado.")
-                        
-                with col_af2:
-                    st.subheader("af_pmod_priority")
-                    priority_vals = df_unique_pairs[df_unique_pairs["Parámetro"] == "af_pmod_priority"]["Valor"].unique()
-                    if len(priority_vals) > 0:
-                        st.table(pd.DataFrame(priority_vals, columns=["Valores Únicos"]))
-                    else:
-                        st.info("No detectado.")
+                    # --- SECCIÓN 3: VALORES ÚNICOS APPSFLYER ---
+                    st.divider()
+                    st.subheader("3. Filtro Específico AppsFlyer")
+                    col_af1, col_af2 = st.columns(2)
+                    
+                    with col_af1:
+                        st.write("**af_xplatform_vt_lookback**")
+                        lookback_vals = df_unique_pairs[df_unique_pairs["Parámetro"] == "af_xplatform_vt_lookback"]["Valor"].unique()
+                        if len(lookback_vals) > 0:
+                            st.table(pd.DataFrame(lookback_vals, columns=["Valores Únicos"]))
+                        else:
+                            st.info("No detectado.")
+                            
+                    with col_af2:
+                        st.write("**af_pmod_priority**")
+                        priority_vals = df_unique_pairs[df_unique_pairs["Parámetro"] == "af_pmod_priority"]["Valor"].unique()
+                        if len(priority_vals) > 0:
+                            st.table(pd.DataFrame(priority_vals, columns=["Valores Únicos"]))
+                        else:
+                            st.info("No detectado.")
+                else:
+                    st.info("No se detectaron parámetros en la Original URL.")
             else:
-                st.info("No se detectaron parámetros en la Original URL.")
-        else:
-            st.warning("Columna 'Original URL' no encontrada.")
+                st.warning("Columna 'Original URL' no encontrada.")
+        except Exception as e:
+            st.error(f"Error procesando el archivo: {e}")
+
+# ==========================================
+# PESTAÑA 2: EXTRACTOR MASIVO DE IPS
+# ==========================================
+with tab2:
+    st.header("Extractor y Agrupador de IPs")
+    st.markdown("Sube **múltiples archivos CSV** al mismo tiempo. El sistema los unirá y agrupará las IPs únicas por País y Sistema Operativo.")
+    
+    # Permitir subir múltiples archivos
+    uploaded_csvs = st.file_uploader("Arrastra aquí todos tus CSVs", type=["csv"], accept_multiple_files=True, key="multi_csv_uploader")
+    
+    if uploaded_csvs:
+        try:
+            # 1. Unir todos los CSVs en un solo DataFrame gigante
+            dataframes = []
+            for file in uploaded_csvs:
+                df_temp = pd.read_csv(file)
+                dataframes.append(df_temp)
+            
+            df_master = pd.concat(dataframes, ignore_index=True)
+            st.success(f"✅ Se han fusionado {len(uploaded_csvs)} archivos con un total de {len(df_master)} filas.")
+            
+            # 2. Función para encontrar el nombre exacto de la columna (ignorando mayúsculas)
+            def find_col(df, possible_names):
+                for col in df.columns:
+                    if col.strip().lower() in possible_names:
+                        return col
+                return None
+
+            # Buscar las columnas clave (añade aquí más variaciones si tu CSV las llama distinto)
+            col_ip = find_col(df_master, ['ip', 'ip address', 'ip_address'])
+            col_os = find_col(df_master, ['os', 'platform', 'operating system'])
+            col_country = find_col(df_master, ['country', 'country code', 'country_code', 'país', 'pais'])
+
+            # 3. Validar que encontramos las 3 columnas
+            missing_cols = []
+            if not col_ip: missing_cols.append("IP")
+            if not col_os: missing_cols.append("OS")
+            if not col_country: missing_cols.append("País")
+
+            if missing_cols:
+                st.error(f"❌ Faltan columnas en los CSVs para hacer la agrupación: {', '.join(missing_cols)}.")
+                st.info("Los encabezados detectados en tus archivos son: " + ", ".join(df_master.columns))
+            else:
+                # 4. Limpiar datos vacíos y agrupar
+                df_clean = df_master.dropna(subset=[col_ip, col_os, col_country]).copy()
                 
-    except Exception as e:
-        st.error(f"Error: {e}")
+                # Agrupar por País y OS, extrayendo las IPs únicas
+                grouped = df_clean.groupby([col_country, col_os])[col_ip].unique().reset_index()
+                
+                # Crear columnas legibles
+                grouped['Total IPs Únicas'] = grouped[col_ip].apply(len)
+                # Unir las IPs con una coma para que sea un solo bloque de texto copiable
+                grouped['Lista de IPs'] = grouped[col_ip].apply(lambda ips: ", ".join(map(str, ips)))
+                
+                # Ordenar columnas para mostrar
+                df_final = grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']]
+                df_final = df_final.sort_values(by=[col_country, col_os]).reset_index(drop=True)
+                
+                # 5. Mostrar la tabla
+                st.subheader("📊 Resultados Agrupados")
+                st.caption("Puedes hacer clic en cualquier celda de la columna 'Lista de IPs' y pulsar Ctrl+C / Cmd+C para copiar todo su contenido.")
+                st.dataframe(df_final, use_container_width=True)
+                
+                # 6. Botón de Descarga (Crucial por si hay miles de IPs y copiar a mano falla)
+                csv_to_download = df_final.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Descargar Tabla de IPs en CSV",
+                    data=csv_to_download,
+                    file_name="ips_agrupadas.csv",
+                    mime="text/csv",
+                )
+                
+        except Exception as e:
+            st.error(f"Ocurrió un error al procesar los archivos: {e}")
