@@ -57,7 +57,7 @@ with tab1:
                 else:
                     st.info("No se encontraron tokens.")
             else:
-                st.warning("Columna 'Postback Url' no encontrada.")
+                st.warning("Columna 'Original URL' no encontrada.")
 
             # --- SECCIÓN 2: PARÁMETROS ÚNICOS (ORIGINAL URL) ---
             st.divider()
@@ -148,6 +148,15 @@ with tab2:
                 
                 # Tabla principal
                 st.dataframe(adset_country_df, use_container_width=True)
+                
+                # BOTÓN DE DESCARGA PARA ADSETS POR PAÍS
+                csv_adsets = adset_country_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Descargar Adsets por País (CSV)",
+                    data=csv_adsets,
+                    file_name="adsets_por_pais.csv",
+                    mime="text/csv",
+                )
             
             elif col_adset:
                 st.info("ℹ️ Se encontró la columna Adset pero no la de País. Mostrando frecuencias globales:")
@@ -168,7 +177,7 @@ with tab2:
                 grouped['Lista de IPs'] = grouped[col_ip].apply(lambda ips: ", ".join(map(str, ips)))
                 st.dataframe(grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']], use_container_width=True)
                 
-                # --- ACTUALIZADO: FRECUENCIA DE TODAS LAS IPS ---
+                # --- FRECUENCIA DE TODAS LAS IPS ---
                 st.subheader("📊 Frecuencia de todas las IPs")
                 st.markdown("Mostrando el contador de repeticiones para **todas** las IPs detectadas, ordenadas de mayor a menor.")
                 ip_counts = df_clean.groupby([col_country, col_os, col_ip]).size().reset_index(name='Repeticiones')
