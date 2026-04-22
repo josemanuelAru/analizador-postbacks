@@ -168,13 +168,16 @@ with tab2:
                 grouped['Lista de IPs'] = grouped[col_ip].apply(lambda ips: ", ".join(map(str, ips)))
                 st.dataframe(grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']], use_container_width=True)
                 
-                st.subheader("🚨 IPs más repetidas (>= 5)")
+                # --- ACTUALIZADO: FRECUENCIA DE TODAS LAS IPS ---
+                st.subheader("📊 Frecuencia de todas las IPs")
+                st.markdown("Mostrando el contador de repeticiones para **todas** las IPs detectadas, ordenadas de mayor a menor.")
                 ip_counts = df_clean.groupby([col_country, col_os, col_ip]).size().reset_index(name='Repeticiones')
-                suspicious_ips = ip_counts[ip_counts['Repeticiones'] >= 5].sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
-                if not suspicious_ips.empty:
-                    st.dataframe(suspicious_ips, use_container_width=True)
+                all_ips_counted = ip_counts.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
+                
+                if not all_ips_counted.empty:
+                    st.dataframe(all_ips_counted, use_container_width=True)
                 else:
-                    st.success("✅ Sin IPs repetidas 5+ veces.")
+                    st.info("No hay datos de IPs para contar.")
                 
                 st.divider()
                 st.subheader("🔍 Investigador de IP")
