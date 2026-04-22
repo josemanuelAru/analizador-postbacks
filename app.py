@@ -175,7 +175,19 @@ with tab2:
                 grouped = df_clean.groupby([col_country, col_os])[col_ip].unique().reset_index()
                 grouped['Total IPs Únicas'] = grouped[col_ip].apply(len)
                 grouped['Lista de IPs'] = grouped[col_ip].apply(lambda ips: ", ".join(map(str, ips)))
-                st.dataframe(grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']], use_container_width=True)
+                
+                # Guardamos la tabla en una variable para mostrarla y descargarla
+                df_ips_unicas = grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']]
+                st.dataframe(df_ips_unicas, use_container_width=True)
+                
+                # BOTÓN DE DESCARGA PARA IPS ÚNICAS POR PAÍS/OS (NUEVO)
+                csv_ips_unicas = df_ips_unicas.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="⬇️ Descargar IPs Únicas por País/OS (CSV)",
+                    data=csv_ips_unicas,
+                    file_name="ips_unicas_pais_os.csv",
+                    mime="text/csv",
+                )
                 
                 # --- FRECUENCIA DE TODAS LAS IPS ---
                 st.subheader("📊 Frecuencia de todas las IPs")
