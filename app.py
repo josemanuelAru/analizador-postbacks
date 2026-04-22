@@ -9,8 +9,19 @@ st.set_page_config(page_title="Herramientas de Afiliación", layout="wide")
 
 st.title("🛠️ Suite de Herramientas para Afiliados")
 
-# Crear las dos pestañas principales
-tab1, tab2 = st.tabs(["🔗 Analizador de URLs (1 CSV)", "🌍 Extractor Masivo de IPs (Múltiples CSVs)"])
+# Crear las TRES pestañas principales
+tab1, tab2, tab3 = st.tabs([
+    "🔗 Analizador de URLs (1 CSV)", 
+    "🌍 Extractor Masivo de IPs", 
+    "📱 Analizador Munimob (af_ip)"
+])
+
+# Función utilitaria compartida para buscar columnas
+def find_col(df, possible_names):
+    for col in df.columns:
+        if col.strip().lower() in possible_names:
+            return col
+    return None
 
 # ==========================================
 # PESTAÑA 1: ANALIZADOR DE URLS Y TOKENS
@@ -25,7 +36,7 @@ with tab1:
             
             # --- SECCIÓN 1: TOKENS EN POSTBACK URL ---
             st.subheader("1. Tokens Únicos (Postback URL)")
-            col_postback = next((c for c in df.columns if c.strip().lower() == "postback url"), None)
+            col_postback = find_col(df, ["postback url"])
             
             if col_postback:
                 token_pattern = re.compile(r'(\{.*?\}|\[.*?\]|<.*?>)')
@@ -51,7 +62,7 @@ with tab1:
             # --- SECCIÓN 2: PARÁMETROS ÚNICOS (ORIGINAL URL) ---
             st.divider()
             st.subheader("2. Parámetros Únicos Detectados (Original URL)")
-            col_original = next((c for c in df.columns if c.strip().lower() == "original url"), None)
+            col_original = find_col(df, ["original url"])
             
             if col_original:
                 all_params_pairs = []
@@ -114,22 +125,10 @@ with tab2:
     
     if uploaded_csvs:
         try:
-            # 1. Unir todos los CSVs en un solo DataFrame
-            dataframes = []
-            for file in uploaded_csvs:
-                df_temp = pd.read_csv(file)
-                dataframes.append(df_temp)
-            
+            dataframes = [pd.read_csv(file) for file in uploaded_csvs]
             df_master = pd.concat(dataframes, ignore_index=True)
             st.success(f"✅ Se han fusionado {len(uploaded_csvs)} archivos con un total de {len(df_master)} filas.")
             
-            # 2. Función para encontrar columnas
-            def find_col(df, possible_names):
-                for col in df.columns:
-                    if col.strip().lower() in possible_names:
-                        return col
-                return None
-
             col_ip = find_col(df_master, ['ip', 'ip address', 'ip_address'])
             col_os = find_col(df_master, ['os', 'platform', 'operating system'])
             col_country = find_col(df_master, ['country', 'country code', 'country_code', 'país', 'pais'])
@@ -140,12 +139,11 @@ with tab2:
             if not col_country: missing_cols.append("País")
 
             if missing_cols:
-                st.error(f"❌ Faltan columnas en los CSVs: {', '.join(missing_cols)}.")
-                st.info("Encabezados detectados: " + ", ".join(df_master.columns))
+                st.error(f"❌ Faltan columnas: {', '.join(missing_cols)}.")
             else:
                 df_clean = df_master.dropna(subset=[col_ip, col_os, col_country]).copy()
                 
-                # --- TABLA 1: IPs Agrupadas Únicas ---
+                # IPs Agrupadas Únicas
                 grouped = df_clean.groupby([col_country, col_os])[col_ip].unique().reset_index()
                 grouped['Total IPs Únicas'] = grouped[col_ip].apply(len)
                 grouped['Lista de IPs'] = grouped[col_ip].apply(lambda ips: ", ".join(map(str, ips)))
@@ -155,10 +153,9 @@ with tab2:
                 st.subheader("📊 Resultados Agrupados (IPs Únicas)")
                 st.dataframe(df_final, use_container_width=True)
                 
-                # --- TABLA 2: IPs Sospechosas (>= 5 repeticiones) ---
+                # IPs Sospechosas
                 st.divider()
                 st.subheader("🚨 IPs más repetidas (Posible Fraude)")
-                
                 ip_counts = df_clean.groupby([col_country, col_os, col_ip]).size().reset_index(name='Repeticiones')
                 suspicious_ips = ip_counts[ip_counts['Repeticiones'] >= 5].sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
                 
@@ -167,30 +164,140 @@ with tab2:
                 else:
                     st.success("✅ No se detectó ninguna IP que se repita 5 veces o más.")
                 
-                # --- SECCIÓN: BUSCADOR DE DETALLES POR IP ---
+                # Buscador
                 st.divider()
                 st.subheader("🔍 Investigador de IP")
-                st.markdown("Copia una IP de las tablas de arriba y pégala aquí para ver todos sus datos originales.")
-                
                 search_ip = st.text_input("Introduce la dirección IP exacta:")
-                
                 if search_ip:
                     clean_search_ip = search_ip.strip()
                     ip_details = df_master[df_master[col_ip].astype(str).str.strip() == clean_search_ip]
+                    if not ip_details.empty:
+                        st.success(f"✅ Se encontraron **{len(ip_details)} registros**.")
+                        st.dataframe(ip_details, use_container_width=True)
+                    else:
+                        st.warning("⚠️ No se encontró la IP.")
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+# ==========================================
+# PESTAÑA 3: ANALIZADOR MUNIMOB (NUEVO)
+# ==========================================
+with tab3:
+    st.header("📱 Analizador Munimob (Extracción de af_ip)")
+    st.markdown("Sube tus CSVs de Munimob. El sistema extraerá los parámetros de la **Original URL**, aislará la **af_ip** y realizará un análisis de fraude con ella.")
+    
+    uploaded_munimob = st.file_uploader("Sube tus archivos CSV de Munimob", type=["csv"], accept_multiple_files=True, key="munimob_uploader")
+    
+    if uploaded_munimob:
+        try:
+            # 1. Unir archivos
+            df_munimob = pd.concat([pd.read_csv(f) for f in uploaded_munimob], ignore_index=True)
+            st.success(f"✅ Se han procesado {len(uploaded_munimob)} archivos con {len(df_munimob)} filas.")
+            
+            col_orig = find_col(df_munimob, ['original url', 'original_url'])
+            
+            if col_orig:
+                # --- EXTRACCIÓN DE PARÁMETROS Y AF_IP ---
+                all_params_pairs = []
+                param_names = set()
+                extracted_af_ips = []
+                
+                urls = df_munimob[col_orig].fillna('').astype(str)
+                
+                for url in urls:
+                    if not url:
+                        extracted_af_ips.append(None)
+                        continue
+                        
+                    parsed = urlparse(url)
+                    params = parse_qs(parsed.query)
+                    
+                    # Guardar parámetros únicos para mostrar
+                    for key, values in params.items():
+                        param_names.add(key)
+                        for val in values:
+                            all_params_pairs.append({"Parámetro": key, "Valor": val})
+                    
+                    # Extraer específicamente la af_ip (si existe en esta URL)
+                    if 'af_ip' in params and len(params['af_ip']) > 0:
+                        extracted_af_ips.append(params['af_ip'][0])
+                    else:
+                        extracted_af_ips.append(None)
+                
+                # Añadimos la af_ip extraída como una nueva columna real al DataFrame
+                df_munimob['AF_IP_Extraida'] = extracted_af_ips
+                
+                # --- 1. MOSTRAR PARÁMETROS (Como en Pestaña 1) ---
+                st.subheader("1. Parámetros Únicos de la URL")
+                df_unique_names = pd.DataFrame(sorted(list(param_names)), columns=["Nombre del Parámetro"])
+                df_unique_pairs = pd.DataFrame(all_params_pairs).drop_duplicates().sort_values(by="Parámetro")
+                
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    st.write("**Nombres de Parámetros detectados:**")
+                    st.dataframe(df_unique_names, use_container_width=True)
+                with col_m2:
+                    st.write("**Combinaciones de Valores únicas:**")
+                    st.dataframe(df_unique_pairs.reset_index(drop=True), use_container_width=True)
+
+                # --- 2. CONTADOR Y ALARMAS DE AF_IP (Como en Pestaña 2) ---
+                st.divider()
+                st.subheader("2. Análisis de Fraude sobre `af_ip`")
+                
+                # Filtramos las filas que sí tienen af_ip
+                df_clean_ips = df_munimob.dropna(subset=['AF_IP_Extraida']).copy()
+                
+                if not df_clean_ips.empty:
+                    # Intentar buscar columnas de País y OS para agrupar mejor
+                    col_os_m = find_col(df_clean_ips, ['os', 'platform', 'operating system'])
+                    col_country_m = find_col(df_clean_ips, ['country', 'country code', 'país', 'pais'])
+                    
+                    # Definimos por qué agrupar dependiendo de qué columnas haya
+                    groupby_cols = []
+                    if col_country_m: groupby_cols.append(col_country_m)
+                    if col_os_m: groupby_cols.append(col_os_m)
+                    groupby_cols.append('AF_IP_Extraida')
+                    
+                    # Contamos cuántas veces aparece cada af_ip
+                    ip_counts = df_clean_ips.groupby(groupby_cols).size().reset_index(name='Repeticiones')
+                    
+                    # Filtramos >= 5
+                    suspicious_ips = ip_counts[ip_counts['Repeticiones'] >= 5].sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
+                    
+                    st.markdown("Mostrando las `af_ip` que se repiten **5 veces o más**:")
+                    if not suspicious_ips.empty:
+                        st.dataframe(suspicious_ips, use_container_width=True)
+                        csv_susp = suspicious_ips.to_csv(index=False).encode('utf-8')
+                        st.download_button("⬇️ Descargar Alertas af_ip", data=csv_susp, file_name="munimob_af_ip_alertas.csv", mime="text/csv")
+                    else:
+                        st.success("✅ Datos limpios: No hay ninguna `af_ip` que alcance las 5 repeticiones.")
+                else:
+                    st.info("⚠️ No se encontró el parámetro 'af_ip' dentro de ninguna Original URL de estos archivos.")
+
+                # --- 3. INVESTIGADOR DE AF_IP ---
+                st.divider()
+                st.subheader("🔍 Investigador Forense (`af_ip`)")
+                st.markdown("Pega aquí una `af_ip` sospechosa para ver **todas las filas de todos los CSVs** donde aparece escondida.")
+                
+                search_af_ip = st.text_input("Introduce la af_ip exacta a buscar:")
+                
+                if search_af_ip:
+                    clean_search = search_af_ip.strip()
+                    ip_details = df_munimob[df_munimob['AF_IP_Extraida'].astype(str) == clean_search]
                     
                     if not ip_details.empty:
-                        st.success(f"✅ Se encontraron **{len(ip_details)} registros** para la IP: `{clean_search_ip}`")
-                        st.dataframe(ip_details, use_container_width=True)
+                        # Ocultamos la columna temporal que creamos para que no ensucie la vista
+                        display_df = ip_details.drop(columns=['AF_IP_Extraida'])
+                        st.success(f"✅ Se encontraron **{len(ip_details)} registros** en los que la URL contiene la af_ip: `{clean_search}`")
+                        st.dataframe(display_df, use_container_width=True)
                         
-                        csv_ip_details = ip_details.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label=f"⬇️ Descargar historial de la IP {clean_search_ip}",
-                            data=csv_ip_details,
-                            file_name=f"reporte_ip_{clean_search_ip}.csv",
-                            mime="text/csv",
-                        )
+                        csv_det = display_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(f"⬇️ Descargar historial de la af_ip {clean_search}", data=csv_det, file_name=f"munimob_reporte_{clean_search}.csv", mime="text/csv")
                     else:
-                        st.warning(f"⚠️ No se encontró la IP `{clean_search_ip}` en los archivos subidos.")
+                        st.warning("⚠️ No se encontró esa `af_ip` en los archivos.")
+
+            else:
+                st.error("❌ No se encontró la columna 'Original URL' en los archivos de Munimob. Revisa los encabezados.")
                 
         except Exception as e:
-            st.error(f"Ocurrió un error al procesar los archivos: {e}")
+            st.error(f"Error al analizar Munimob: {e}")
