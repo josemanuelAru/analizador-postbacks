@@ -86,7 +86,7 @@ with tab2:
             col_country = find_col(df_master, ['country', 'country code', 'country_code', 'país', 'pais'])
             col_adset = find_col(df_master, ['adset_id', 'adset id', 'adset_name', 'adset name', 'ad group id', 'adgroup_id'])
 
-            # --- SECCIÓN ADSETS POR PAÍS (ACTUALIZADA) ---
+            # --- SECCIÓN ADSETS POR PAÍS ---
             st.divider()
             st.subheader("🎯 Adset IDs separados por País")
             
@@ -99,15 +99,6 @@ with tab2:
                 
                 # Tabla principal
                 st.dataframe(adset_country_df, use_container_width=True)
-                
-                # Filtro visual para analizar un país específico
-                st.write("---")
-                paises_disponibles = sorted(adset_country_df[col_country].unique())
-                pais_seleccionado = st.selectbox("Selecciona un país para ver el desglose visual de sus Adsets:", paises_disponibles)
-                
-                if pais_seleccionado:
-                    df_pais = adset_country_df[adset_country_df[col_country] == pais_seleccionado]
-                    st.bar_chart(df_pais.set_index(col_adset)['Frecuencia'])
             
             elif col_adset:
                 st.info("ℹ️ Se encontró la columna Adset pero no la de País. Mostrando frecuencias globales:")
