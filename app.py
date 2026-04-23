@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import requests
 from collections import Counter
 from urllib.parse import urlparse, parse_qs
 
@@ -8,6 +9,21 @@ from urllib.parse import urlparse, parse_qs
 st.set_page_config(page_title="Herramientas de Afiliación", layout="wide")
 
 st.title("🛠️ Suite de Herramientas para Afiliados")
+
+# --- NUEVA FUNCIÓN: API DE APPLE ---
+def get_apple_bundle_id(app_name):
+    # Evitar buscar valores nulos o vacíos
+    if not app_name or str(app_name).strip().lower() in ['sin id', 'nan', 'none']:
+        return "N/A"
+    try:
+        url = f"https://itunes.apple.com/search?term={app_name}&entity=software&limit=1"
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data['resultCount'] > 0:
+            return data['results'][0]['bundleId']
+        return "No encontrado"
+    except Exception:
+        return "Error de conexión"
 
 # Crear las TRES pestañas principales
 tab1, tab2, tab3 = st.tabs([
@@ -157,6 +173,40 @@ with tab2:
                     file_name="adsets_por_pais.csv",
                     mime="text/csv",
                 )
+
+                # --- NUEVA SECCIÓN: BÚSQUEDA DE BUNDLE IDs EN APPLE ---
+                st.markdown("### 🔍 Obtener Bundle IDs Oficiales (Tráfico iOS)")
+                st.info("Si los nombres de los Adsets corresponden a aplicaciones, pulsa este botón para conectarte a la base de datos de Apple y buscar su Bundle ID real.")
+                
+                if st.button("Buscar Bundle IDs en Apple App Store"):
+                    # Extraer apps únicas (evitando 'Sin ID' o vacíos)
+                    unique_apps = [app for app in adset_country_df[col_adset].unique() if str(app).strip().lower() not in ['sin id', 'nan', 'none', '']]
+                    
+                    mapping = {}
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    for i, app_name in enumerate(unique_apps):
+                        status_text.text(f"Buscando en Apple: {app_name}...")
+                        mapping[app_name] = get_apple_bundle_id(app_name)
+                        progress_bar.progress((i + 1) / len(unique_apps))
+                        
+                    status_text.text("✅ Búsqueda completada.")
+                    
+                    # Añadir la nueva columna al dataframe mapeando los resultados
+                    adset_enriched_df = adset_country_df.copy()
+                    adset_enriched_df['Bundle ID (Apple)'] = adset_enriched_df[col_adset].map(mapping).fillna('N/A')
+                    
+                    st.dataframe(adset_enriched_df, use_container_width=True)
+                    
+                    # Botón de descarga para el dataframe enriquecido
+                    csv_apple = adset_enriched_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="⬇️ Descargar Adsets con Bundle IDs (CSV)",
+                        data=csv_apple,
+                        file_name="adsets_bundle_ids_apple.csv",
+                        mime="text/csv",
+                    )
             
             elif col_adset:
                 st.info("ℹ️ Se encontró la columna Adset pero no la de País. Mostrando frecuencias globales:")
@@ -180,7 +230,7 @@ with tab2:
                 df_ips_unicas = grouped[[col_country, col_os, 'Total IPs Únicas', 'Lista de IPs']]
                 st.dataframe(df_ips_unicas, use_container_width=True)
                 
-                # BOTÓN DE DESCARGA PARA IPS ÚNICAS POR PAÍS/OS (NUEVO)
+                # BOTÓN DE DESCARGA PARA IPS ÚNICAS POR PAÍS/OS
                 csv_ips_unicas = df_ips_unicas.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="⬇️ Descargar IPs Únicas por País/OS (CSV)",
