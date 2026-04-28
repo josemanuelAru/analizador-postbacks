@@ -15,12 +15,10 @@ def get_apple_store_id(app_name):
     if not app_name or str(app_name).strip().lower() in ['sin id', 'nan', 'none', '']:
         return "N/A"
     try:
-        # Buscamos en la iTunes Search API
         url = f"https://itunes.apple.com/search?term={app_name}&entity=software&limit=1"
         response = requests.get(url, timeout=5)
         data = response.json()
         if data['resultCount'] > 0:
-            # Extraemos el trackId (que es el ID numérico de la App Store)
             track_id = data['results'][0].get('trackId')
             if track_id:
                 return f"id{track_id}"
@@ -28,19 +26,20 @@ def get_apple_store_id(app_name):
     except Exception:
         return "Error de conexión"
 
-# Crear las TRES pestañas principales
-tab1, tab2, tab3 = st.tabs([
-    "🔗 Analizador de URLs (1 CSV)", 
-    "🌍 Extractor Masivo de IPs", 
-    "📱 Analizador Munimob (af_ip)"
-])
-
 # Función utilitaria compartida para buscar columnas
 def find_col(df, possible_names):
     for col in df.columns:
         if col.strip().lower() in possible_names:
             return col
     return None
+
+# Crear las CUATRO pestañas principales
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🔗 Analizador de URLs", 
+    "🌍 Extractor Masivo de IPs", 
+    "📱 Analizador Munimob (af_ip)",
+    "🔀 Analizador Cruzado Multidimensional"
+])
 
 # ==========================================
 # PESTAÑA 1: ANALIZADOR DE URLS Y TOKENS
@@ -192,6 +191,14 @@ with tab2:
                     csv_apple = adset_enriched_df.to_csv(index=False).encode('utf-8')
                     st.download_button(label="⬇️ Descargar Reporte con Apple IDs", data=csv_apple, file_name="adsets_con_apple_ids.csv", mime="text/csv")
             
+            elif col_adset:
+                st.info("ℹ️ Se encontró la columna Adset pero no la de País. Mostrando frecuencias globales:")
+                adset_global = df_master[col_adset].value_counts().reset_index()
+                adset_global.columns = [col_adset, 'Frecuencia']
+                st.dataframe(adset_global, use_container_width=True)
+            else:
+                st.warning("⚠️ No se encontró la columna de Adset ID en los archivos.")
+
             # --- SECCIÓN IPs ---
             st.divider()
             if col_ip and col_os and col_country:
@@ -296,3 +303,72 @@ with tab3:
 
         except Exception as e:
             st.error(f"Error en Munimob: {e}")
+
+# ==========================================
+# PESTAÑA 4: ANALIZADOR CRUZADO MULTIDIMENSIONAL
+# ==========================================
+with tab4:
+    st.header("🔀 Analizador de Frecuencias y Cruces de Datos")
+    st.markdown("Esta herramienta lee **todas las columnas** de tus CSVs, te muestra qué valores se repiten en cada una y te permite cruzarlas para encontrar patrones ocultos.")
+    
+    uploaded_cross = st.file_uploader("Sube tus CSVs para análisis cruzado", type=["csv"], accept_multiple_files=True, key="cross_uploader")
+    
+    if uploaded_cross:
+        try:
+            df_cross = pd.concat([pd.read_csv(f) for f in uploaded_cross], ignore_index=True)
+            st.success(f"✅ Se han procesado {len(df_cross)} registros para análisis cruzado.")
+            
+            # --- PARTE 1: FRECUENCIAS INDIVIDUALES POR COLUMNA ---
+            st.subheader("1. Frecuencia individual por columna")
+            st.markdown("Despliega cualquier columna para ver cuáles son sus valores más repetidos (ordenados de mayor a menor).")
+            
+            # Creamos 3 columnas en la interfaz para que los desplegables se vean ordenados y no ocupen tanto espacio vertical
+            c1, c2, c3 = st.columns(3)
+            
+            for i, col in enumerate(df_cross.columns):
+                # Repartir los expanders entre las 3 columnas de la pantalla
+                target_col = [c1, c2, c3][i % 3]
+                
+                with target_col:
+                    with st.expander(f"📊 {col}"):
+                        val_counts = df_cross[col].value_counts().reset_index()
+                        val_counts.columns = ['Valor', 'Repeticiones']
+                        st.dataframe(val_counts, use_container_width=True)
+            
+            # --- PARTE 2: CRUCE DE DATOS ---
+            st.divider()
+            st.subheader("2. Analizador Cruzado (Combinaciones)")
+            st.markdown("Selecciona **dos o más columnas** para ver cuántas veces se repite cada combinación exacta.")
+            
+            cols_to_cross = st.multiselect("Selecciona las columnas a cruzar (ej. OS + País + Adset_Name):", df_cross.columns)
+            
+            if cols_to_cross:
+                # Crear tabla de combinaciones
+                df_crossed = df_cross.groupby(cols_to_cross).size().reset_index(name='Repeticiones')
+                df_crossed = df_crossed.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
+                
+                st.write(f"Se encontraron **{len(df_crossed)}** combinaciones únicas.")
+                st.dataframe(df_crossed, use_container_width=True)
+                
+                # --- PARTE 3: BUSCADOR DENTRO DEL CRUCE ---
+                st.markdown("### 🔍 Filtrar Combinaciones")
+                st.markdown("Escribe un valor exacto para filtrar la tabla cruzada superior (ej. buscar un ID de Adset o un País específico).")
+                
+                search_cross = st.text_input("Buscar valor en cualquiera de las columnas cruzadas:")
+                
+                if search_cross:
+                    # Aplicamos una máscara que busca el texto en cualquiera de las columnas seleccionadas
+                    mask = df_crossed[cols_to_cross].astype(str).apply(lambda x: x.str.contains(search_cross.strip(), case=False, na=False)).any(axis=1)
+                    df_filtered = df_crossed[mask]
+                    
+                    if not df_filtered.empty:
+                        st.success(f"✅ Se encontraron {len(df_filtered)} combinaciones que incluyen el valor '{search_cross}'.")
+                        st.dataframe(df_filtered, use_container_width=True)
+                        
+                        csv_filtered = df_filtered.to_csv(index=False).encode('utf-8')
+                        st.download_button("⬇️ Descargar Filtrado", data=csv_filtered, file_name=f"cruce_filtrado_{search_cross}.csv", mime="text/csv")
+                    else:
+                        st.warning(f"⚠️ No se encontró el valor '{search_cross}' en las combinaciones generadas.")
+                        
+        except Exception as e:
+            st.error(f"Error al procesar el análisis cruzado: {e}")
