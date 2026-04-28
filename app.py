@@ -322,13 +322,10 @@ with tab4:
             st.subheader("1. Frecuencia individual por columna")
             st.markdown("Despliega cualquier columna para ver cuáles son sus valores más repetidos (ordenados de mayor a menor).")
             
-            # Creamos 3 columnas en la interfaz para que los desplegables se vean ordenados y no ocupen tanto espacio vertical
             c1, c2, c3 = st.columns(3)
             
             for i, col in enumerate(df_cross.columns):
-                # Repartir los expanders entre las 3 columnas de la pantalla
                 target_col = [c1, c2, c3][i % 3]
-                
                 with target_col:
                     with st.expander(f"📊 {col}"):
                         val_counts = df_cross[col].value_counts().reset_index()
@@ -343,7 +340,6 @@ with tab4:
             cols_to_cross = st.multiselect("Selecciona las columnas a cruzar (ej. OS + País + Adset_Name):", df_cross.columns)
             
             if cols_to_cross:
-                # Crear tabla de combinaciones
                 df_crossed = df_cross.groupby(cols_to_cross).size().reset_index(name='Repeticiones')
                 df_crossed = df_crossed.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
                 
@@ -351,24 +347,53 @@ with tab4:
                 st.dataframe(df_crossed, use_container_width=True)
                 
                 # --- PARTE 3: BUSCADOR DENTRO DEL CRUCE ---
-                st.markdown("### 🔍 Filtrar Combinaciones")
+                st.markdown("### 🔍 3. Filtrar Combinaciones")
                 st.markdown("Escribe un valor exacto para filtrar la tabla cruzada superior (ej. buscar un ID de Adset o un País específico).")
                 
                 search_cross = st.text_input("Buscar valor en cualquiera de las columnas cruzadas:")
                 
                 if search_cross:
-                    # Aplicamos una máscara que busca el texto en cualquiera de las columnas seleccionadas
                     mask = df_crossed[cols_to_cross].astype(str).apply(lambda x: x.str.contains(search_cross.strip(), case=False, na=False)).any(axis=1)
                     df_filtered = df_crossed[mask]
                     
                     if not df_filtered.empty:
                         st.success(f"✅ Se encontraron {len(df_filtered)} combinaciones que incluyen el valor '{search_cross}'.")
                         st.dataframe(df_filtered, use_container_width=True)
-                        
                         csv_filtered = df_filtered.to_csv(index=False).encode('utf-8')
                         st.download_button("⬇️ Descargar Filtrado", data=csv_filtered, file_name=f"cruce_filtrado_{search_cross}.csv", mime="text/csv")
                     else:
                         st.warning(f"⚠️ No se encontró el valor '{search_cross}' en las combinaciones generadas.")
+
+                # --- PARTE 4: EXTRAER DATOS ORIGINALES POR COMBINACIÓN (NUEVO) ---
+                st.divider()
+                st.subheader("📋 4. Extraer filas originales por Combinación")
+                st.markdown("Selecciona una combinación exacta de los filtros para ver y descargar **todas las filas originales** (con todas sus columnas) que coinciden con esos valores.")
+                
+                # Creamos desplegables dinámicos basados en las columnas que cruzó el usuario
+                c_cols = st.columns(len(cols_to_cross))
+                selected_vals = {}
+                
+                for idx, col in enumerate(cols_to_cross):
+                    with c_cols[idx]:
+                        unique_vals = sorted(df_cross[col].dropna().astype(str).unique())
+                        selected_vals[col] = st.selectbox(f"Filtrar por {col}:", ["(Todos)"] + unique_vals, key=f"filter_{col}")
+                
+                df_raw_filtered = df_cross.copy()
+                filtros_aplicados = False
+                
+                for col, val in selected_vals.items():
+                    if val != "(Todos)":
+                        df_raw_filtered = df_raw_filtered[df_raw_filtered[col].astype(str) == val]
+                        filtros_aplicados = True
+                
+                if filtros_aplicados:
+                    st.success(f"✅ Mostrando **{len(df_raw_filtered)} filas originales** que coinciden con la combinación seleccionada.")
+                    st.dataframe(df_raw_filtered, use_container_width=True)
+                    
+                    csv_raw = df_raw_filtered.to_csv(index=False).encode('utf-8')
+                    st.download_button("⬇️ Descargar Filas Originales (CSV)", data=csv_raw, file_name="filas_originales_combinacion.csv", mime="text/csv")
+                else:
+                    st.info("👆 Selecciona valores específicos arriba para ver las filas originales correspondientes.")
                         
         except Exception as e:
             st.error(f"Error al procesar el análisis cruzado: {e}")
