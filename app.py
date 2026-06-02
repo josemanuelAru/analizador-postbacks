@@ -10,6 +10,21 @@ st.set_page_config(page_title="Herramientas de Afiliación", layout="wide")
 
 st.title("🛠️ Suite de Herramientas para Afiliados")
 
+# --- FUNCIÓN INTELIGENTE: LEER CSV DE APPSFLYER ---
+def load_csv(file):
+    file.seek(0)
+    lines = file.getvalue().decode('utf-8', errors='ignore').splitlines()
+    skip = 0
+    sep = ','
+    for i, line in enumerate(lines[:5]):
+        if ';' in line or ',' in line:
+            skip = i
+            if line.count(';') > line.count(','):
+                sep = ';'
+            break
+    file.seek(0)
+    return pd.read_csv(file, sep=sep, skiprows=skip, on_bad_lines='skip')
+
 # --- FUNCIÓN: OBTENER APPLE ID (idXXXXXXXXX) ---
 def get_apple_store_id(app_name):
     if not app_name or str(app_name).strip().lower() in ['sin id', 'nan', 'none', '']:
@@ -39,7 +54,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🌍 Extractor Masivo", 
     "📱 Analizador Munimob",
     "🔀 Analizador Cruzado",
-    "🔢 Contador de IPs"
+    "🔢 Contador de IPs y USD"
 ])
 
 # ==========================================
@@ -51,10 +66,9 @@ with tab1:
 
     if uploaded_file is not None:
         try:
-            df = pd.read_csv(uploaded_file)
+            df = load_csv(uploaded_file)
             col_original = find_col(df, ["original url"])
             
-            # --- LECTOR DE TEMPLATES ---
             st.subheader("1. Lector de Templates (Onelink ID)")
             if col_original:
                 templates = []
@@ -83,7 +97,6 @@ with tab1:
                 st.warning("No se encontró la columna 'Original URL' para leer los Templates.")
 
             st.divider()
-            # --- TOKENS POSTBACK ---
             st.subheader("2. Tokens Únicos (Postback URL)")
             col_postback = find_col(df, ["postback url"])
             if col_postback:
@@ -100,7 +113,6 @@ with tab1:
                     with c2: st.bar_chart(df_tokens.set_index("Token"))
             
             st.divider()
-            # --- PARÁMETROS URL ---
             st.subheader("3. Parámetros Únicos Detectados (Original URL)")
             if col_original:
                 all_params_pairs = []
@@ -130,7 +142,7 @@ with tab2:
     
     if uploaded_csvs:
         try:
-            df_master = pd.concat([pd.read_csv(file) for file in uploaded_csvs], ignore_index=True)
+            df_master = pd.concat([load_csv(file) for file in uploaded_csvs], ignore_index=True)
             st.success(f"✅ Fusionados {len(uploaded_csvs)} archivos.")
             
             col_ip = find_col(df_master, ['ip', 'ip address', 'ip_address'])
@@ -180,7 +192,7 @@ with tab3:
     uploaded_munimob = st.file_uploader("Sube tus CSVs de Munimob", type=["csv"], accept_multiple_files=True, key="munimob_uploader")
     if uploaded_munimob:
         try:
-            df_m = pd.concat([pd.read_csv(f) for f in uploaded_munimob], ignore_index=True)
+            df_m = pd.concat([load_csv(f) for f in uploaded_munimob], ignore_index=True)
             col_orig = find_col(df_m, ['original url', 'original_url'])
             if col_orig:
                 extracted = []
@@ -213,7 +225,7 @@ with tab4:
     uploaded_cross = st.file_uploader("Sube tus CSVs para análisis cruzado", type=["csv"], accept_multiple_files=True, key="cross_uploader")
     if uploaded_cross:
         try:
-            df_cross = pd.concat([pd.read_csv(f) for f in uploaded_cross], ignore_index=True)
+            df_cross = pd.concat([load_csv(f) for f in uploaded_cross], ignore_index=True)
             st.subheader("1. Frecuencia individual por columna")
             c1, c2, c3 = st.columns(3)
             for i, col in enumerate(df_cross.columns):
@@ -248,7 +260,7 @@ with tab4:
         except Exception as e: st.error(f"Error: {e}")
 
 # ==========================================
-# PESTAÑA 5: CONTADOR DE IPs + REVENUE (ACTUALIZADA)
+# PESTAÑA 5: CONTADOR DE IPs + REVENUE
 # ==========================================
 with tab5:
     st.header("🔢 Contador de IPs y Revenue")
@@ -258,7 +270,7 @@ with tab5:
     
     if uploaded_ip_counter:
         try:
-            df_ip = pd.read_csv(uploaded_ip_counter)
+            df_ip = load_csv(uploaded_ip_counter)
             
             # Buscamos la columna de IP y la de Revenue
             col_ip = find_col(df_ip, ['ip', 'ip address', 'ip_address'])
@@ -291,8 +303,10 @@ with tab5:
                             Total_Event_Revenue_USD=(col_rev, 'sum')
                         ).reset_index()
                         
-                        # Renombramos para que sea más legible en la tabla
                         ip_stats.rename(columns={col_ip: 'IP'}, inplace=True)
+                        
+                        # Formatear el revenue para que se vea como dinero (2 decimales)
+                        ip_stats['Total_Event_Revenue_USD'] = ip_stats['Total_Event_Revenue_USD'].round(2)
                     else:
                         st.info("ℹ️ No se detectó ninguna columna de 'Event Revenue USD'. Mostrando solo el contador de repeticiones.")
                         ip_stats = df_clean_ip[col_ip].value_counts().reset_index()
