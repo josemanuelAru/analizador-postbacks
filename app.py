@@ -33,12 +33,13 @@ def find_col(df, possible_names):
             return col
     return None
 
-# Crear las CUATRO pestañas principales
-tab1, tab2, tab3, tab4 = st.tabs([
+# Crear las CINCO pestañas principales
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔗 Analizador de URLs", 
-    "🌍 Extractor Masivo de IPs", 
-    "📱 Analizador Munimob (af_ip)",
-    "🔀 Analizador Cruzado Multidimensional"
+    "🌍 Extractor Masivo", 
+    "📱 Analizador Munimob",
+    "🔀 Analizador Cruzado",
+    "🔢 Contador de IPs"
 ])
 
 # ==========================================
@@ -53,17 +54,15 @@ with tab1:
             df = pd.read_csv(uploaded_file)
             col_original = find_col(df, ["original url"])
             
-            # --- NUEVA SECCIÓN: LECTOR DE TEMPLATES ---
+            # --- LECTOR DE TEMPLATES ---
             st.subheader("1. Lector de Templates (Onelink ID)")
             if col_original:
                 templates = []
                 urls_orig = df[col_original].dropna().astype(str)
                 
                 for url in urls_orig:
-                    # Extraer lo que hay entre la última / y el ?
-                    # Ejemplo: https://impressions.onelink.me/Qq7r?pid=... -> Qq7r
-                    path = url.split('?')[0] # Nos quedamos con la parte izquierda del ?
-                    template_id = path.split('/')[-1] # Nos quedamos con lo último tras la barra
+                    path = url.split('?')[0] 
+                    template_id = path.split('/')[-1] 
                     if template_id:
                         templates.append(template_id)
                 
@@ -230,7 +229,7 @@ with tab4:
                 st.dataframe(crossed, use_container_width=True)
                 
                 st.divider()
-                st.subheader("📋 4. Extraer filas originales")
+                st.subheader("📋 3. Extraer filas originales")
                 selected_vals = {}
                 c_cols = st.columns(len(cols))
                 for idx, col in enumerate(cols):
@@ -247,3 +246,75 @@ with tab4:
                     st.dataframe(df_final, use_container_width=True)
                     st.download_button("⬇️ Descargar (CSV)", data=df_final.to_csv(index=False).encode('utf-8'), file_name="combinacion.csv")
         except Exception as e: st.error(f"Error: {e}")
+
+# ==========================================
+# PESTAÑA 5: CONTADOR DE IPs + REVENUE (ACTUALIZADA)
+# ==========================================
+with tab5:
+    st.header("🔢 Contador de IPs y Revenue")
+    st.markdown("Sube un CSV para obtener el total de IPs, sus repeticiones y la suma del **Event Revenue USD** generado por cada una.")
+    
+    uploaded_ip_counter = st.file_uploader("Sube tu archivo CSV aquí", type=["csv"], key="ip_counter_uploader")
+    
+    if uploaded_ip_counter:
+        try:
+            df_ip = pd.read_csv(uploaded_ip_counter)
+            
+            # Buscamos la columna de IP y la de Revenue
+            col_ip = find_col(df_ip, ['ip', 'ip address', 'ip_address'])
+            col_rev = find_col(df_ip, ['event revenue usd', 'event_revenue_usd', 'revenue', 'revenue usd'])
+            
+            if col_ip:
+                df_clean_ip = df_ip.dropna(subset=[col_ip]).copy()
+                
+                if not df_clean_ip.empty:
+                    total_ips = len(df_clean_ip)
+                    unique_ips = df_clean_ip[col_ip].nunique()
+                    
+                    st.success("✅ Archivo procesado correctamente.")
+                    
+                    col1, col2 = st.columns(2)
+                    col1.metric("Total de IPs procesadas", total_ips)
+                    col2.metric("Total de IPs ÚNICAS diferentes", unique_ips)
+                    
+                    st.divider()
+                    st.subheader("📊 Frecuencia e Ingresos por IP")
+                    
+                    if col_rev:
+                        # Limpiamos la columna de Revenue por si trae comas o símbolos de dólar
+                        df_clean_ip[col_rev] = df_clean_ip[col_rev].astype(str).str.replace(r'[^\d.]', '', regex=True)
+                        df_clean_ip[col_rev] = pd.to_numeric(df_clean_ip[col_rev], errors='coerce').fillna(0)
+                        
+                        # Agrupamos por IP calculando el tamaño (repeticiones) y la suma (Revenue)
+                        ip_stats = df_clean_ip.groupby(col_ip).agg(
+                            Repeticiones=(col_ip, 'size'),
+                            Total_Event_Revenue_USD=(col_rev, 'sum')
+                        ).reset_index()
+                        
+                        # Renombramos para que sea más legible en la tabla
+                        ip_stats.rename(columns={col_ip: 'IP'}, inplace=True)
+                    else:
+                        st.info("ℹ️ No se detectó ninguna columna de 'Event Revenue USD'. Mostrando solo el contador de repeticiones.")
+                        ip_stats = df_clean_ip[col_ip].value_counts().reset_index()
+                        ip_stats.columns = ['IP', 'Repeticiones']
+                    
+                    # Ordenamos por cantidad de repeticiones (de mayor a menor)
+                    ip_stats = ip_stats.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
+                    
+                    st.dataframe(ip_stats, use_container_width=True)
+                    
+                    # Botón de descarga
+                    csv_ips = ip_stats.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="⬇️ Descargar Reporte (CSV)",
+                        data=csv_ips,
+                        file_name="contador_ips_revenue.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("⚠️ La columna de IPs existe, pero está vacía en este archivo.")
+            else:
+                st.error("❌ No se encontró ninguna columna de IP (el sistema busca 'ip', 'ip address' o 'ip_address').")
+                
+        except Exception as e:
+            st.error(f"Error procesando el archivo: {e}")
