@@ -48,13 +48,14 @@ def find_col(df, possible_names):
             return col
     return None
 
-# Crear las CINCO pestañas principales
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔗 Analizador de URLs", 
+# Crear las SEIS pestañas principales
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "🔗 Analizador URLs", 
     "🌍 Extractor Masivo", 
     "📱 Analizador Munimob",
     "🔀 Analizador Cruzado",
-    "🔢 Contador de IPs y USD"
+    "🔢 Contador IPs",
+    "🖱️ Contador Click IDs"
 ])
 
 # ==========================================
@@ -264,7 +265,7 @@ with tab4:
 # ==========================================
 with tab5:
     st.header("🔢 Contador de IPs y Revenue")
-    st.markdown("Sube un CSV para obtener el total de IPs, sus repeticiones y la suma del **Event Revenue USD** generado por cada una.")
+    st.markdown("Sube un CSV para obtener el total de IPs, sus repeticiones y la suma del **Event Revenue USD**.")
     
     uploaded_ip_counter = st.file_uploader("Sube tu archivo CSV aquí", type=["csv"], key="ip_counter_uploader")
     
@@ -272,7 +273,6 @@ with tab5:
         try:
             df_ip = load_csv(uploaded_ip_counter)
             
-            # Buscamos la columna de IP y la de Revenue
             col_ip = find_col(df_ip, ['ip', 'ip address', 'ip_address'])
             col_rev = find_col(df_ip, ['event revenue usd', 'event_revenue_usd', 'revenue', 'revenue usd'])
             
@@ -293,42 +293,108 @@ with tab5:
                     st.subheader("📊 Frecuencia e Ingresos por IP")
                     
                     if col_rev:
-                        # Limpiamos la columna de Revenue por si trae comas o símbolos de dólar
                         df_clean_ip[col_rev] = df_clean_ip[col_rev].astype(str).str.replace(r'[^\d.]', '', regex=True)
                         df_clean_ip[col_rev] = pd.to_numeric(df_clean_ip[col_rev], errors='coerce').fillna(0)
                         
-                        # Agrupamos por IP calculando el tamaño (repeticiones) y la suma (Revenue)
                         ip_stats = df_clean_ip.groupby(col_ip).agg(
                             Repeticiones=(col_ip, 'size'),
                             Total_Event_Revenue_USD=(col_rev, 'sum')
                         ).reset_index()
                         
                         ip_stats.rename(columns={col_ip: 'IP'}, inplace=True)
-                        
-                        # Formatear el revenue para que se vea como dinero (2 decimales)
                         ip_stats['Total_Event_Revenue_USD'] = ip_stats['Total_Event_Revenue_USD'].round(2)
                     else:
-                        st.info("ℹ️ No se detectó ninguna columna de 'Event Revenue USD'. Mostrando solo el contador de repeticiones.")
+                        st.info("ℹ️ No se detectó ninguna columna de 'Event Revenue USD'. Mostrando solo contador.")
                         ip_stats = df_clean_ip[col_ip].value_counts().reset_index()
                         ip_stats.columns = ['IP', 'Repeticiones']
                     
-                    # Ordenamos por cantidad de repeticiones (de mayor a menor)
                     ip_stats = ip_stats.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
-                    
                     st.dataframe(ip_stats, use_container_width=True)
                     
-                    # Botón de descarga
                     csv_ips = ip_stats.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="⬇️ Descargar Reporte (CSV)", data=csv_ips, file_name="contador_ips.csv", mime="text/csv")
+                else:
+                    st.warning("⚠️ La columna de IPs está vacía.")
+            else:
+                st.error("❌ No se encontró la columna de IP.")
+        except Exception as e:
+            st.error(f"Error procesando el archivo: {e}")
+
+# ==========================================
+# PESTAÑA 6: CONTADOR DE CLICK IDs + REVENUE (NUEVA)
+# ==========================================
+with tab6:
+    st.header("🖱️ Contador de Click IDs y Revenue")
+    st.markdown("Extrae los **Click IDs** directamente desde la *Original URL* y suma el **Event Revenue USD** generado por cada uno.")
+    
+    uploaded_click_counter = st.file_uploader("Sube tu archivo CSV aquí", type=["csv"], key="click_counter_uploader")
+    
+    if uploaded_click_counter:
+        try:
+            df_clicks = load_csv(uploaded_click_counter)
+            
+            # Buscamos la columna de Original URL y la de Revenue
+            col_orig_url = find_col(df_clicks, ['original url', 'original_url'])
+            col_rev_click = find_col(df_clicks, ['event revenue usd', 'event_revenue_usd', 'revenue', 'revenue usd'])
+            
+            if col_orig_url:
+                extracted_clicks = []
+                for url in df_clicks[col_orig_url].fillna('').astype(str):
+                    params = parse_qs(urlparse(url).query)
+                    # Buscamos variaciones del parámetro clickid
+                    if 'clickid' in params:
+                        extracted_clicks.append(params['clickid'][0])
+                    elif 'click_id' in params:
+                        extracted_clicks.append(params['click_id'][0])
+                    else:
+                        extracted_clicks.append(None)
+                
+                df_clicks['Click_ID_Extraido'] = extracted_clicks
+                df_clean_clicks = df_clicks.dropna(subset=['Click_ID_Extraido']).copy()
+                
+                if not df_clean_clicks.empty:
+                    total_clicks = len(df_clean_clicks)
+                    unique_clicks = df_clean_clicks['Click_ID_Extraido'].nunique()
+                    
+                    st.success("✅ Archivo procesado y Click IDs extraídos correctamente.")
+                    
+                    col1, col2 = st.columns(2)
+                    col1.metric("Total de Clicks Procesados", total_clicks)
+                    col2.metric("Total de Click IDs ÚNICOS diferentes", unique_clicks)
+                    
+                    st.divider()
+                    st.subheader("📊 Frecuencia e Ingresos por Click ID")
+                    
+                    if col_rev_click:
+                        df_clean_clicks[col_rev_click] = df_clean_clicks[col_rev_click].astype(str).str.replace(r'[^\d.]', '', regex=True)
+                        df_clean_clicks[col_rev_click] = pd.to_numeric(df_clean_clicks[col_rev_click], errors='coerce').fillna(0)
+                        
+                        click_stats = df_clean_clicks.groupby('Click_ID_Extraido').agg(
+                            Repeticiones=('Click_ID_Extraido', 'size'),
+                            Total_Event_Revenue_USD=(col_rev_click, 'sum')
+                        ).reset_index()
+                        
+                        click_stats.rename(columns={'Click_ID_Extraido': 'Click ID'}, inplace=True)
+                        click_stats['Total_Event_Revenue_USD'] = click_stats['Total_Event_Revenue_USD'].round(2)
+                    else:
+                        st.info("ℹ️ No se detectó columna de 'Event Revenue USD'. Mostrando solo el contador de repeticiones.")
+                        click_stats = df_clean_clicks['Click_ID_Extraido'].value_counts().reset_index()
+                        click_stats.columns = ['Click ID', 'Repeticiones']
+                    
+                    click_stats = click_stats.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
+                    st.dataframe(click_stats, use_container_width=True)
+                    
+                    csv_click_export = click_stats.to_csv(index=False).encode('utf-8')
                     st.download_button(
-                        label="⬇️ Descargar Reporte (CSV)",
-                        data=csv_ips,
-                        file_name="contador_ips_revenue.csv",
+                        label="⬇️ Descargar Reporte de Click IDs (CSV)",
+                        data=csv_click_export,
+                        file_name="contador_click_ids_revenue.csv",
                         mime="text/csv"
                     )
                 else:
-                    st.warning("⚠️ La columna de IPs existe, pero está vacía en este archivo.")
+                    st.warning("⚠️ No se encontró el parámetro 'clickid' dentro de las Original URLs de este archivo.")
             else:
-                st.error("❌ No se encontró ninguna columna de IP (el sistema busca 'ip', 'ip address' o 'ip_address').")
+                st.error("❌ No se encontró la columna 'Original URL' (necesaria para extraer los Click IDs).")
                 
         except Exception as e:
             st.error(f"Error procesando el archivo: {e}")
