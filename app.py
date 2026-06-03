@@ -48,14 +48,15 @@ def find_col(df, possible_names):
             return col
     return None
 
-# Crear las SEIS pestañas principales
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🔗 Analizador URLs", 
-    "🌍 Extractor Masivo", 
-    "📱 Analizador Munimob",
-    "🔀 Analizador Cruzado",
+# Crear las SIETE pestañas principales
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "🔗 URLs", 
+    "🌍 IPs Masivo", 
+    "📱 Munimob",
+    "🔀 Cruzado",
     "🔢 Contador IPs",
-    "🖱️ Contador Click IDs"
+    "🖱️ Click IDs",
+    "🚨 Anti-Fraude CTIT"
 ])
 
 # ==========================================
@@ -74,28 +75,22 @@ with tab1:
             if col_original:
                 templates = []
                 urls_orig = df[col_original].dropna().astype(str)
-                
                 for url in urls_orig:
                     path = url.split('?')[0] 
                     template_id = path.split('/')[-1] 
                     if template_id:
                         templates.append(template_id)
-                
                 if templates:
                     template_counts = Counter(templates)
                     df_templates = pd.DataFrame(template_counts.items(), columns=["Template ID", "Frecuencia"]).sort_values(by="Frecuencia", ascending=False)
-                    
                     st.write(f"Se han detectado **{len(df_templates)}** Templates diferentes.")
-                    
                     c_t1, c_t2 = st.columns([1, 2])
-                    with c_t1:
-                        st.dataframe(df_templates.reset_index(drop=True), use_container_width=True)
-                    with c_t2:
-                        st.bar_chart(df_templates.set_index("Template ID"))
+                    with c_t1: st.dataframe(df_templates.reset_index(drop=True), use_container_width=True)
+                    with c_t2: st.bar_chart(df_templates.set_index("Template ID"))
                 else:
                     st.info("No se pudieron extraer Templates de las URLs.")
             else:
-                st.warning("No se encontró la columna 'Original URL' para leer los Templates.")
+                st.warning("No se encontró la columna 'Original URL'.")
 
             st.divider()
             st.subheader("2. Tokens Únicos (Postback URL)")
@@ -105,7 +100,6 @@ with tab1:
                 all_tokens = []
                 for url in df[col_postback].dropna().astype(str):
                     all_tokens.extend(token_pattern.findall(url))
-                
                 if all_tokens:
                     token_counts = Counter(all_tokens)
                     df_tokens = pd.DataFrame(token_counts.items(), columns=["Token", "Frecuencia"]).sort_values(by="Frecuencia", ascending=False)
@@ -123,7 +117,6 @@ with tab1:
                     for key, values in params.items():
                         param_names.add(key)
                         for val in values: all_params_pairs.append({"Parámetro": key, "Valor": val})
-                
                 if param_names:
                     df_unique_names = pd.DataFrame(sorted(list(param_names)), columns=["Nombre del Parámetro"])
                     df_unique_pairs = pd.DataFrame(all_params_pairs).drop_duplicates().sort_values(by="Parámetro")
@@ -145,7 +138,6 @@ with tab2:
         try:
             df_master = pd.concat([load_csv(file) for file in uploaded_csvs], ignore_index=True)
             st.success(f"✅ Fusionados {len(uploaded_csvs)} archivos.")
-            
             col_ip = find_col(df_master, ['ip', 'ip address', 'ip_address'])
             col_os = find_col(df_master, ['os', 'platform', 'operating system'])
             col_country = find_col(df_master, ['country', 'country code', 'país', 'pais'])
@@ -156,7 +148,7 @@ with tab2:
                 st.subheader("🎯 Adset IDs por País")
                 adset_country_df = df_master.groupby([col_country, col_adset]).size().reset_index(name='Frecuencia')
                 st.dataframe(adset_country_df, use_container_width=True)
-                st.download_button(label="⬇️ Descargar Adsets (CSV)", data=adset_country_df.to_csv(index=False).encode('utf-8'), file_name="adsets_por_pais.csv", mime="text/csv")
+                st.download_button("⬇️ Descargar Adsets", data=adset_country_df.to_csv(index=False).encode('utf-8'), file_name="adsets_por_pais.csv", mime="text/csv")
 
                 st.markdown("### 🔍 Obtener Apple IDs Oficiales")
                 if st.button("Buscar Apple IDs en App Store"):
@@ -169,7 +161,7 @@ with tab2:
                     adset_enriched_df = adset_country_df.copy()
                     adset_enriched_df['Apple ID'] = adset_enriched_df[col_adset].map(mapping).fillna('N/A')
                     st.dataframe(adset_enriched_df, use_container_width=True)
-                    st.download_button(label="⬇️ Descargar con Apple IDs", data=adset_enriched_df.to_csv(index=False).encode('utf-8'), file_name="adsets_con_apple_ids.csv")
+                    st.download_button("⬇️ Descargar con Apple IDs", data=adset_enriched_df.to_csv(index=False).encode('utf-8'), file_name="adsets_con_apple_ids.csv")
 
             st.divider()
             if col_ip and col_os and col_country:
@@ -248,7 +240,6 @@ with tab4:
                 for idx, col in enumerate(cols):
                     with c_cols[idx]:
                         selected_vals[col] = st.selectbox(f"Filtrar {col}:", ["(Todos)"] + sorted(df_cross[col].dropna().astype(str).unique()))
-                
                 df_final = df_cross.copy()
                 applied = False
                 for col, val in selected_vals.items():
@@ -265,136 +256,142 @@ with tab4:
 # ==========================================
 with tab5:
     st.header("🔢 Contador de IPs y Revenue")
-    st.markdown("Sube un CSV para obtener el total de IPs, sus repeticiones y la suma del **Event Revenue USD**.")
-    
     uploaded_ip_counter = st.file_uploader("Sube tu archivo CSV aquí", type=["csv"], key="ip_counter_uploader")
-    
     if uploaded_ip_counter:
         try:
             df_ip = load_csv(uploaded_ip_counter)
-            
             col_ip = find_col(df_ip, ['ip', 'ip address', 'ip_address'])
-            col_rev = find_col(df_ip, ['event revenue usd', 'event_revenue_usd', 'revenue', 'revenue usd'])
-            
+            col_rev = find_col(df_ip, ['event revenue usd', 'event_revenue_usd', 'revenue'])
             if col_ip:
                 df_clean_ip = df_ip.dropna(subset=[col_ip]).copy()
-                
                 if not df_clean_ip.empty:
-                    total_ips = len(df_clean_ip)
-                    unique_ips = df_clean_ip[col_ip].nunique()
-                    
                     st.success("✅ Archivo procesado correctamente.")
-                    
-                    col1, col2 = st.columns(2)
-                    col1.metric("Total de IPs procesadas", total_ips)
-                    col2.metric("Total de IPs ÚNICAS diferentes", unique_ips)
-                    
-                    st.divider()
-                    st.subheader("📊 Frecuencia e Ingresos por IP")
+                    c1, c2 = st.columns(2)
+                    c1.metric("IPs procesadas", len(df_clean_ip))
+                    c2.metric("IPs ÚNICAS", df_clean_ip[col_ip].nunique())
                     
                     if col_rev:
                         df_clean_ip[col_rev] = df_clean_ip[col_rev].astype(str).str.replace(r'[^\d.]', '', regex=True)
                         df_clean_ip[col_rev] = pd.to_numeric(df_clean_ip[col_rev], errors='coerce').fillna(0)
-                        
-                        ip_stats = df_clean_ip.groupby(col_ip).agg(
-                            Repeticiones=(col_ip, 'size'),
-                            Total_Event_Revenue_USD=(col_rev, 'sum')
-                        ).reset_index()
-                        
-                        ip_stats.rename(columns={col_ip: 'IP'}, inplace=True)
-                        ip_stats['Total_Event_Revenue_USD'] = ip_stats['Total_Event_Revenue_USD'].round(2)
+                        ip_stats = df_clean_ip.groupby(col_ip).agg(Repeticiones=(col_ip, 'size'), Total_Revenue=(col_rev, 'sum')).reset_index()
+                        ip_stats['Total_Revenue'] = ip_stats['Total_Revenue'].round(2)
                     else:
-                        st.info("ℹ️ No se detectó ninguna columna de 'Event Revenue USD'. Mostrando solo contador.")
                         ip_stats = df_clean_ip[col_ip].value_counts().reset_index()
                         ip_stats.columns = ['IP', 'Repeticiones']
                     
                     ip_stats = ip_stats.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
                     st.dataframe(ip_stats, use_container_width=True)
-                    
-                    csv_ips = ip_stats.to_csv(index=False).encode('utf-8')
-                    st.download_button(label="⬇️ Descargar Reporte (CSV)", data=csv_ips, file_name="contador_ips.csv", mime="text/csv")
-                else:
-                    st.warning("⚠️ La columna de IPs está vacía.")
-            else:
-                st.error("❌ No se encontró la columna de IP.")
-        except Exception as e:
-            st.error(f"Error procesando el archivo: {e}")
+                    st.download_button("⬇️ Descargar Reporte", data=ip_stats.to_csv(index=False).encode('utf-8'), file_name="contador_ips_revenue.csv", mime="text/csv")
+                else: st.warning("⚠️ Columna de IPs vacía.")
+            else: st.error("❌ No se encontró columna de IP.")
+        except Exception as e: st.error(f"Error: {e}")
 
 # ==========================================
-# PESTAÑA 6: CONTADOR DE CLICK IDs + REVENUE (NUEVA)
+# PESTAÑA 6: CONTADOR DE CLICK IDs + REVENUE
 # ==========================================
 with tab6:
     st.header("🖱️ Contador de Click IDs y Revenue")
-    st.markdown("Extrae los **Click IDs** directamente desde la *Original URL* y suma el **Event Revenue USD** generado por cada uno.")
-    
-    uploaded_click_counter = st.file_uploader("Sube tu archivo CSV aquí", type=["csv"], key="click_counter_uploader")
-    
-    if uploaded_click_counter:
+    uploaded_click = st.file_uploader("Sube tu archivo CSV aquí", type=["csv"], key="click_up")
+    if uploaded_click:
         try:
-            df_clicks = load_csv(uploaded_click_counter)
-            
-            # Buscamos la columna de Original URL y la de Revenue
+            df_clicks = load_csv(uploaded_click)
             col_orig_url = find_col(df_clicks, ['original url', 'original_url'])
-            col_rev_click = find_col(df_clicks, ['event revenue usd', 'event_revenue_usd', 'revenue', 'revenue usd'])
-            
+            col_rev_click = find_col(df_clicks, ['event revenue usd', 'event_revenue_usd', 'revenue'])
             if col_orig_url:
-                extracted_clicks = []
+                ext_clicks = []
                 for url in df_clicks[col_orig_url].fillna('').astype(str):
                     params = parse_qs(urlparse(url).query)
-                    # Buscamos variaciones del parámetro clickid
-                    if 'clickid' in params:
-                        extracted_clicks.append(params['clickid'][0])
-                    elif 'click_id' in params:
-                        extracted_clicks.append(params['click_id'][0])
-                    else:
-                        extracted_clicks.append(None)
+                    if 'clickid' in params: ext_clicks.append(params['clickid'][0])
+                    elif 'click_id' in params: ext_clicks.append(params['click_id'][0])
+                    else: ext_clicks.append(None)
                 
-                df_clicks['Click_ID_Extraido'] = extracted_clicks
-                df_clean_clicks = df_clicks.dropna(subset=['Click_ID_Extraido']).copy()
-                
-                if not df_clean_clicks.empty:
-                    total_clicks = len(df_clean_clicks)
-                    unique_clicks = df_clean_clicks['Click_ID_Extraido'].nunique()
-                    
-                    st.success("✅ Archivo procesado y Click IDs extraídos correctamente.")
-                    
-                    col1, col2 = st.columns(2)
-                    col1.metric("Total de Clicks Procesados", total_clicks)
-                    col2.metric("Total de Click IDs ÚNICOS diferentes", unique_clicks)
-                    
-                    st.divider()
-                    st.subheader("📊 Frecuencia e Ingresos por Click ID")
+                df_clicks['Click_ID_Extraido'] = ext_clicks
+                df_cl_clean = df_clicks.dropna(subset=['Click_ID_Extraido']).copy()
+                if not df_cl_clean.empty:
+                    st.success("✅ Click IDs extraídos.")
+                    c1, c2 = st.columns(2)
+                    c1.metric("Clicks Procesados", len(df_cl_clean))
+                    c2.metric("Click IDs ÚNICOS", df_cl_clean['Click_ID_Extraido'].nunique())
                     
                     if col_rev_click:
-                        df_clean_clicks[col_rev_click] = df_clean_clicks[col_rev_click].astype(str).str.replace(r'[^\d.]', '', regex=True)
-                        df_clean_clicks[col_rev_click] = pd.to_numeric(df_clean_clicks[col_rev_click], errors='coerce').fillna(0)
-                        
-                        click_stats = df_clean_clicks.groupby('Click_ID_Extraido').agg(
-                            Repeticiones=('Click_ID_Extraido', 'size'),
-                            Total_Event_Revenue_USD=(col_rev_click, 'sum')
-                        ).reset_index()
-                        
-                        click_stats.rename(columns={'Click_ID_Extraido': 'Click ID'}, inplace=True)
-                        click_stats['Total_Event_Revenue_USD'] = click_stats['Total_Event_Revenue_USD'].round(2)
+                        df_cl_clean[col_rev_click] = df_cl_clean[col_rev_click].astype(str).str.replace(r'[^\d.]', '', regex=True)
+                        df_cl_clean[col_rev_click] = pd.to_numeric(df_cl_clean[col_rev_click], errors='coerce').fillna(0)
+                        click_stats = df_cl_clean.groupby('Click_ID_Extraido').agg(Repeticiones=('Click_ID_Extraido', 'size'), Total_Revenue=(col_rev_click, 'sum')).reset_index()
+                        click_stats['Total_Revenue'] = click_stats['Total_Revenue'].round(2)
                     else:
-                        st.info("ℹ️ No se detectó columna de 'Event Revenue USD'. Mostrando solo el contador de repeticiones.")
-                        click_stats = df_clean_clicks['Click_ID_Extraido'].value_counts().reset_index()
-                        click_stats.columns = ['Click ID', 'Repeticiones']
+                        click_stats = df_cl_clean['Click_ID_Extraido'].value_counts().reset_index()
+                        click_stats.columns = ['Click_ID_Extraido', 'Repeticiones']
                     
                     click_stats = click_stats.sort_values(by='Repeticiones', ascending=False).reset_index(drop=True)
                     st.dataframe(click_stats, use_container_width=True)
-                    
-                    csv_click_export = click_stats.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="⬇️ Descargar Reporte de Click IDs (CSV)",
-                        data=csv_click_export,
-                        file_name="contador_click_ids_revenue.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.warning("⚠️ No se encontró el parámetro 'clickid' dentro de las Original URLs de este archivo.")
-            else:
-                st.error("❌ No se encontró la columna 'Original URL' (necesaria para extraer los Click IDs).")
+                    st.download_button("⬇️ Descargar Reporte", data=click_stats.to_csv(index=False).encode('utf-8'), file_name="contador_clickids.csv")
+            else: st.error("❌ No se encontró columna 'Original URL'.")
+        except Exception as e: st.error(f"Error: {e}")
+
+# ==========================================
+# PESTAÑA 7: ANTI-FRAUDE CTIT (NUEVA)
+# ==========================================
+with tab7:
+    st.header("🚨 Detector de Fraude (Install Hijacking / CTIT)")
+    st.markdown("Analiza la diferencia de tiempo entre el clic y la instalación para detectar comportamientos no humanos.")
+    
+    uploaded_ctit = st.file_uploader("Sube tu archivo de AppsFlyer", type=["csv"], key="ctit_up")
+    
+    if uploaded_ctit:
+        try:
+            df_ctit = load_csv(uploaded_ctit)
+            
+            # Buscar las columnas de tiempo
+            col_click = find_col(df_ctit, ['attributed touch time'])
+            col_install = find_col(df_ctit, ['install time'])
+            col_adset = find_col(df_ctit, ['adset_id', 'adset id', 'adset_name', 'adset name'])
+            
+            if col_click and col_install:
+                df_clean_ctit = df_ctit.dropna(subset=[col_click, col_install]).copy()
                 
+                # Convertir a formato de fecha reconociendo el formato europeo de AppsFlyer (dd-mm-yyyy HH:MM)
+                df_clean_ctit['Click_DT'] = pd.to_datetime(df_clean_ctit[col_click], dayfirst=True, errors='coerce')
+                df_clean_ctit['Install_DT'] = pd.to_datetime(df_clean_ctit[col_install], dayfirst=True, errors='coerce')
+                
+                # Eliminar filas donde no se pudo interpretar la fecha
+                df_clean_ctit = df_clean_ctit.dropna(subset=['Click_DT', 'Install_DT'])
+                
+                if not df_clean_ctit.empty:
+                    # Calcular el CTIT en segundos
+                    df_clean_ctit['CTIT_Segundos'] = (df_clean_ctit['Install_DT'] - df_clean_ctit['Click_DT']).dt.total_seconds()
+                    
+                    # Filtramos instalaciones sospechosas (CTIT <= 20 segundos)
+                    df_fraude = df_clean_ctit[df_clean_ctit['CTIT_Segundos'] <= 20].copy()
+                    
+                    st.divider()
+                    st.subheader("📊 Resumen del Análisis de Tiempo")
+                    c1, c2 = st.columns(2)
+                    c1.metric("Instalaciones Totales Analizadas", len(df_clean_ctit))
+                    c2.metric("🚨 Instalaciones Sospechosas (<20s)", len(df_fraude))
+                    
+                    if not df_fraude.empty:
+                        st.error(f"¡Alerta! Se han detectado {len(df_fraude)} instalaciones con un CTIT extremadamente bajo (posible Install Hijacking).")
+                        
+                        # Agrupamos por culpable (Adset ID)
+                        if col_adset:
+                            st.subheader("Culpables por Adset")
+                            culpables = df_fraude.groupby(col_adset).size().reset_index(name='Instalaciones_Fraudulentas').sort_values(by='Instalaciones_Fraudulentas', ascending=False)
+                            st.dataframe(culpables, use_container_width=True)
+                        
+                        # Mostramos el desglose
+                        st.subheader("Detalle de las Instalaciones Sospechosas")
+                        columnas_mostrar = [col_click, col_install, 'CTIT_Segundos']
+                        if col_adset: columnas_mostrar.insert(0, col_adset)
+                        
+                        st.dataframe(df_fraude[columnas_mostrar].sort_values(by='CTIT_Segundos'), use_container_width=True)
+                        
+                        csv_fraude = df_fraude.to_csv(index=False).encode('utf-8')
+                        st.download_button("⬇️ Descargar Reporte de Fraude", data=csv_fraude, file_name="reporte_install_hijacking.csv", mime="text/csv")
+                    else:
+                        st.success("✅ Todo limpio. No se detectaron instalaciones con un CTIT menor a 20 segundos.")
+                else:
+                    st.warning("No se pudieron interpretar las fechas del archivo.")
+            else:
+                st.error("❌ No se encontraron las columnas 'Attributed Touch Time' y 'Install Time' necesarias para el cálculo.")
         except Exception as e:
-            st.error(f"Error procesando el archivo: {e}")
+            st.error(f"Error en el análisis de fraude: {e}")
